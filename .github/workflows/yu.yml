@@ -52,11 +52,17 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: 安装/更新 Go 语言环境
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24.0'
-        cache: false
+    - name: 彻底清理旧版 Go 源码
+      run: |
+        cd openwrt
+        # 1. 删除 feeds 里的旧 golang 源码
+        rm -rf feeds/packages/lang/golang
+        # 2. 告诉编译系统不要用它自带的 host-go
+        rm -rf build_dir/host/pkg/golang-*
+        # 3. 这里的关键：让 OpenWrt 编译时直接调用系统环境中的 Go 1.24
+        # 我们不需要手动建软链接，Actions 的 setup-go 已经把它加到 PATH 里的
+        # 验证一下版本，确保日志里显示的是 1.24
+        go version
 
     - name: 检查空间使用情况
       if: (!cancelled())
