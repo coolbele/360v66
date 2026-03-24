@@ -45,14 +45,9 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        docker rmi $(docker images -q)
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /etc/mysql /usr/local/lib/android
-        sudo -E apt-get -qq purge azure-cli google* llvm* moby* mysql* php* powershell
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install $(curl -fsSL is.gd/depends_ubuntu_2204)
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
+        sudo timedatectl set-timezone $TZ
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
@@ -157,7 +152,7 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        echo -e "1 360v6测试版，4.4内核\n2 无线正常\n3 usb挂载正常\n4 管理地址：192.168.3.1\n5 帐号：root\n6 密码：password" >> release.txt
+        echo -e "1 360v6测试版，4.4内核\n2 无线正常\n3 usb挂载正常\n4 管理地址：10.0.10.1\n5 帐号：root\n6 密码：password" >> release.txt
         echo "release_tag=$(date +"%Y.%m.%d-%H%M-测试版")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
