@@ -55,6 +55,7 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.24.0'
+        cache: false
 
     - name: 检查空间使用情况
       if: (!cancelled())
