@@ -51,6 +51,11 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
+    - name: 安装/更新 Go 语言环境
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+
     - name: 检查空间使用情况
       if: (!cancelled())
       run: df -hT
