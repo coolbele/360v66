@@ -1,3 +1,4 @@
+
 #
 # Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
@@ -8,7 +9,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: x86
+name: 360V6-cs
 permissions: write-all
 #开启写权限，防止无法上传到release
 
@@ -25,7 +26,7 @@ env:
   REPO_URL: https://github.com/coolbele/sdf8057-ipq6000
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: ./config/x86.config
+  CONFIG_FILE: ./config/hao.config
   DIY_P1_SH: ./scripts/360V6/diy2.sh
   DIY_P2_SH: ./scripts/360V6/360V6-cs.sh
   UPLOAD_BIN_DIR: true
@@ -47,13 +48,15 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
-        rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,v2ray*,sing*,smartdns}
-        rm -rf feeds/packages/utils/v2dat
-        rm -rf feeds/packages/lang/golang
-        git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
         sudo timedatectl set-timezone $TZ
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
+
+    - name: 安装/更新 Go 语言环境
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+        cache: false
 
     - name: 检查空间使用情况
       if: (!cancelled())
@@ -77,6 +80,13 @@ jobs:
         chmod +x ./scripts/feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        
+    - name: go
+      run: |
+          # 物理删除 feeds 里的 golang 源码目录
+          rm -rf feeds/packages/lang/golang
+          # 同时也删除可能存在的编译缓存（如果有的话）
+          rm -rf build_dir/host/pkg/golang-*
 
     #- name: 导入补丁
       #run: |
@@ -188,4 +198,3 @@ jobs:
         repository: ${{ github.repository }}
         retain_days: 1
         keep_minimum_runs: 3
-
