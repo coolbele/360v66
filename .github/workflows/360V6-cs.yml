@@ -33,10 +33,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: 检查项目
+    - name: 1. 检查项目
       uses: actions/checkout@main
 
-    - name: 初始化编译环境
+    - name: 2. 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
@@ -46,7 +46,7 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: 安装最新版 Go (1.24.7)
+    - name: 3. 安装 Go 1.24.7
       run: |
         curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
         sudo rm -rf /usr/local/go
@@ -54,13 +54,13 @@ jobs:
         echo "/usr/local/go/bin" >> $GITHUB_PATH
         /usr/local/go/bin/go version
 
-    - name: 克隆源码
+    - name: 4. 克隆源码
       working-directory: /workdir
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: 更新 & 安装 feeds & 锁定 Sing-box v1.11.3
+    - name: 5. 更新 Feeds 并锁定 Sing-box v1.11.3
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
@@ -68,34 +68,35 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P1_SH
         ./scripts/feeds update -a
         
-        # 强制修改 Sing-box 为 1.11.3 并清理哈希
+        # 强制修改 Sing-box 版本并清理哈希
         SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile)
         if [ -f "$SB_MAKEFILE" ]; then
           sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
           sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' "$SB_MAKEFILE"
           sed -i '/PKG_HASH:=/d' "$SB_MAKEFILE"
           sed -i '/PKG_MIRROR_HASH:=/d' "$SB_MAKEFILE"
+          echo "✅ Sing-box 锁定为 v1.11.3"
         fi
         
         ./scripts/feeds install -a
 
-    - name: 彻底劫持 Go 编译脚本 (终极爆破)
+    - name: 6. 劫持编译脚本 (强制 1.24.7)
       working-directory: openwrt
       run: |
         sudo ln -sf /usr/local/go/bin/go /usr/bin/go
         sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
         
-        # 劫持 golang-build.sh，让所有 Go 插件强制使用 1.24.7
+        # 劫持 golang-build.sh
         BUILD_SH="feeds/packages/lang/golang/golang-build.sh"
         if [ -f "$BUILD_SH" ]; then
           sed -i 's/go build/\/usr\/local\/go\/bin\/go build/g' "$BUILD_SH"
           sed -i 's/go install/\/usr\/local\/go\/bin\/go install/g' "$BUILD_SH"
         fi
 
-        # 针对 sing-box Makefile 的绝对路径注入
+        # 针对 sing-box Makefile 加固
         find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go/\/usr\/local\/go\/bin\/go/g' {} +
 
-        # 伪造编译标记，跳过源码级重编 Go
+        # 伪造 host 标记
         mkdir -p staging_dir/host/stamp
         touch staging_dir/host/stamp/.golang_installed
         mkdir -p staging_dir/host/bin
@@ -103,13 +104,13 @@ jobs:
         
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
-    - name: 剔除问题插件 (geoview)
+    - name: 7. 剔除问题插件 (geoview)
       working-directory: openwrt
       run: |
         rm -rf feeds/passwall_packages/geoview
         [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
 
-    - name: 导入配置 & 执行脚本 P2
+    - name: 8. 导入配置
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
@@ -117,7 +118,7 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
         ./scripts/feeds install -a
 
-    - name: 下载软件包
+    - name: 9. 下载软件包
       id: package
       working-directory: openwrt
       run: |
@@ -125,11 +126,7 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: SSH 远程调试 (可选)
-      uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
-
-    - name: 编译固件
+    - name: 10. 编译固件
       id: compile
       working-directory: openwrt
       run: |
@@ -140,7 +137,7 @@ jobs:
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    - name: 整理文件
+    - name: 11. 整理文件
       id: organize
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -149,162 +146,14 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 上传固件至 Artifacts
+    - name: 12. 上传固件至 Artifacts
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
-    - name: 发布 Release 固件
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ env.FILE_DATE }}
-        files: ${{ env.FIRMWARE }}/*
-        body: |
-          360v6 稳定版固件 (2026)
-          Sing-box: v1.11.3 (回退锁定版)
-          编译环境: Go 1.24.7
-          管理地址: 10.0.10.1
-          密码: password
-
-    - name: 清理旧的工作流记录
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
-      uses: actions/checkout@main
-
-    - name: 初始化编译环境
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
-        sudo timedatectl set-timezone $TZ
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-
-    - name: 安装 Go 1.24.7 (全局环境)
-      run: |
-        curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
-        sudo rm -rf /usr/local/go
-        sudo tar -C /usr/local -xzf go.tar.gz
-        echo "/usr/local/go/bin" >> $GITHUB_PATH
-        /usr/local/go/bin/go version
-
-    - name: 克隆源码
-      working-directory: /workdir
-      run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: 更新 & 安装 feeds & 强制锁定 Sing-box v1.11.3
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-        
-        # 1. 更新 feeds
-        ./scripts/feeds update -a
-        
-        # 2. 定位并修改 sing-box 的 Makefile (在安装前修改)
-        # 强制指定版本为 v1.11.3，并移除所有哈希校验防止下载失败
-        SB_DIR="feeds/passwall_packages/sing-box"
-        if [ -d "$SB_DIR" ]; then
-          sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' $SB_DIR/Makefile
-          sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' $SB_DIR/Makefile
-          sed -i '/PKG_HASH:=/d' $SB_DIR/Makefile
-          sed -i '/PKG_MIRROR_HASH:=/d' $SB_DIR/Makefile
-          echo "✅ Sing-box 源码配置已重置为 v1.11.3"
-        fi
-        
-        # 3. 安装 feeds
-        ./scripts/feeds install -a
-
-    - name: 彻底劫持 Go 环境 (终极爆破 V3)
-      working-directory: openwrt
-      run: |
-        # 建立系统级软链接
-        sudo ln -sf /usr/local/go/bin/go /usr/bin/go
-        sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
-        
-        # 劫持 OpenWrt 编译脚本：强制指向 1.24.7
-        BUILD_SH="feeds/packages/lang/golang/golang-build.sh"
-        if [ -f "$BUILD_SH" ]; then
-          sed -i 's/go build/\/usr\/local\/go\/bin\/go build/g' "$BUILD_SH"
-          sed -i 's/go install/\/usr\/local\/go\/bin\/go install/g' "$BUILD_SH"
-        fi
-
-        # 针对 sing-box 的编译指令做最后加固
-        find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go/\/usr\/local\/go\/bin\/go/g' {} +
-
-        # 伪造 host 标记，避免重新编译旧版 Go
-        mkdir -p staging_dir/host/stamp
-        touch staging_dir/host/stamp/.golang_installed
-        mkdir -p staging_dir/host/bin
-        ln -sf /usr/local/go/bin/go staging_dir/host/bin/go
-        
-        echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-        echo "✅ 编译环境劫持完成"
-
-    - name: 剔除问题插件 (geoview)
-      working-directory: openwrt
-      run: |
-        rm -rf feeds/passwall_packages/geoview
-        [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
-
-    - name: 导入配置 & 执行脚本 P2
-      run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-        ./scripts/feeds install -a
-
-    - name: 下载软件包
-      id: package
-      working-directory: openwrt
-      run: |
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: 编译固件
-      id: compile
-      working-directory: openwrt
-      run: |
-        echo -e "$(nproc) thread compile"
-        # 优先全速编译，失败则输出详细日志
-        make -j$(nproc) || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-    - name: 整理文件
-      id: organize
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: 上传固件目录
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
-
-    - name: 发布 Release
+    - name: 13. 发布 Release
       uses: softprops/action-gh-release@v1
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
       env:
@@ -314,288 +163,11 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
         body: |
           360v6 稳定版固件
-          Sing-box: v1.11.3 (锁定版本)
-          Go 编译器: v1.24.7
-          管理地址：10.0.10.1
-          密码：password
+          内核: 4.4 / Sing-box: v1.11.3 (锁定)
+          环境: Go 1.24.7
+          管理地址: 10.0.10.1 / 密码: password
 
-    - name: 删除过时工作流程
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
-      uses: actions/checkout@main
-
-    - name: 初始化编译环境
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
-        sudo timedatectl set-timezone $TZ
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-
-    - name: 安装 Go 1.24.7 (保持环境领先)
-      run: |
-        curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
-        sudo rm -rf /usr/local/go
-        sudo tar -C /usr/local -xzf go.tar.gz
-        echo "/usr/local/go/bin" >> $GITHUB_PATH
-
-    - name: 克隆源码
-      working-directory: /workdir
-      run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: 更新 & 安装 feeds & 固定 Sing-box v1.11.3
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-        ./scripts/feeds update -a
-        
-        # --- 核心锁定步骤 ---
-        # 1. 强制修改 PassWall 依赖的 sing-box 版本为 1.11.3
-        # 2. 修改 PKG_HASH 为空（或直接移除），防止校验失败
-        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile)
-        if [ -f "$SB_MAKEFILE" ]; then
-          sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
-          sed -i '/PKG_HASH:=/d' "$SB_MAKEFILE"
-          echo "✅ 已锁定 Sing-box 版本为 v1.11.3"
-        fi
-        
-        ./scripts/feeds install -a
-
-    - name: 彻底劫持 Go 环境 (终极爆破 V3)
-      working-directory: openwrt
-      run: |
-        sudo ln -sf /usr/local/go/bin/go /usr/bin/go
-        sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
-        
-        # 劫持编译脚本
-        BUILD_SH="feeds/packages/lang/golang/golang-build.sh"
-        [ -f "$BUILD_SH" ] && sed -i 's/go build/\/usr\/local\/go\/bin\/go build/g' "$BUILD_SH"
-        [ -f "$BUILD_SH" ] && sed -i 's/go install/\/usr\/local\/go\/bin\/go install/g' "$BUILD_SH"
-
-        # 劫持 sing-box 的 Makefile 路径调用
-        find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go/\/usr\/local\/go\/bin\/go/g' {} +
-
-        mkdir -p staging_dir/host/stamp
-        touch staging_dir/host/stamp/.golang_installed
-        mkdir -p staging_dir/host/bin
-        ln -sf /usr/local/go/bin/go staging_dir/host/bin/go
-        
-        echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-
-    - name: 剔除问题插件 (geoview)
-      working-directory: openwrt
-      run: |
-        rm -rf feeds/passwall_packages/geoview
-        [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
-
-    - name: 导入配置 & 执行脚本 P2
-      run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-        ./scripts/feeds install -a
-
-    - name: 下载软件包
-      id: package
-      working-directory: openwrt
-      run: |
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: 编译固件
-      id: compile
-      working-directory: openwrt
-      run: |
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-    - name: 整理文件
-      id: organize
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: 上传固件目录
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
-
-    - name: 发布 Release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ env.FILE_DATE }}
-        files: ${{ env.FIRMWARE }}/*
-        body: |
-          360v6 专用固件
-          Sing-box 已回退至稳定版 v1.11.3
-          环境已强制适配 Go 1.24.7
-          管理地址：10.0.10.1
-          密码：password
-
-    - name: 删除过时工作流程
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
-      uses: actions/checkout@main
-
-    - name: 初始化编译环境
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
-        sudo timedatectl set-timezone $TZ
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-
-    - name: 安装最新版 Go (1.24.7)
-      run: |
-        # 下载官方 1.24.7 版本
-        curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
-        sudo rm -rf /usr/local/go
-        sudo tar -C /usr/local -xzf go.tar.gz
-        
-        # 将新版 Go 加入系统路径
-        echo "/usr/local/go/bin" >> $GITHUB_PATH
-        
-        # 验证版本输出
-        /usr/local/go/bin/go version
-
-    - name: 克隆源码
-      working-directory: /workdir
-      run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: 更新 & 安装 feeds & 执行脚本 P1
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-
-    - name: 强制劫持 Go 环境 (深度爆破 V2)
-      working-directory: openwrt
-      run: |
-        # 1. 暴力修改 sing-box 的 Makefile
-        # 将 Makefile 里的 $(GO_PKG_VARS) go build 直接替换为系统绝对路径的 /usr/local/go/bin/go build
-        # 这样无论 OpenWrt 内部环境如何干扰，执行时都会调用我们刚装的 1.24.7
-        find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go build/\/usr\/local\/go\/bin\/go build/g' {} +
-        
-        # 2. 伪造编译系统环境标记，防止它尝试重新下载旧版 Go 源码
-        mkdir -p staging_dir/host/stamp
-        touch staging_dir/host/stamp/.golang_installed
-        
-        # 3. 在 staging 目录下建立绝对路径软链接（双重保险）
-        mkdir -p staging_dir/host/bin
-        ln -sf /usr/local/go/bin/go staging_dir/host/bin/go
-        ln -sf /usr/local/go/bin/gofmt staging_dir/host/bin/gofmt
-        
-        # 4. 注入环境变量，告知 Go 锁定本地链
-        echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-        echo "✅ sing-box Makefile 已强制指向 Go 1.24.7"
-
-    - name: 剔除问题插件 (geoview)
-      working-directory: openwrt
-      run: |
-        rm -rf feeds/passwall_packages/geoview
-        [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
-        echo "✅ geoview 已清理"
-
-    - name: 导入配置 & 执行脚本 P2
-      run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-        ./scripts/feeds install -a
-
-    - name: 下载软件包
-      id: package
-      working-directory: openwrt
-      run: |
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: SSH connection to Actions
-      uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
-
-    - name: 编译固件
-      id: compile
-      working-directory: openwrt
-      run: |
-        echo -e "$(nproc) thread compile"
-        # 尝试全速编译，失败则回退到单线程输出详细日志
-        make -j$(nproc) || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-    - name: 整理文件
-      id: organize
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: 上传固件目录
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
-
-    - name: 发布 Release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ env.FILE_DATE }}
-        files: ${{ env.FIRMWARE }}/*
-        body: |
-          360v6 专用固件 (4.4 内核)
-          内核及组件已更新至 2026 最新适配版
-          Sing-box v1.13.3 (已解决 Go 1.24.7 环境依赖)
-          管理地址：10.0.10.1
-          密码：password
-
-    - name: 删除过时工作流程
+    - name: 14. 清理工作流
       uses: Mattraks/delete-workflow-runs@v2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
