@@ -51,24 +51,27 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: 深度劫持 Go 编译环境
+    - name: 强制劫持 Go 环境 (支持 sing-box 编译)
+      working-directory: openwrt
       run: |
-        # 使用全路径，规避 cd 找不到目录的问题
-        WRT_DIR="$GITHUB_WORKSPACE/openwrt"
+        # 1. 物理移除 feeds 里的旧 Go 源码目录，防止它被 Makefile 触发重新下载
+        rm -rf feeds/packages/lang/golang
         
-        # 1. 彻底切断官方 Feeds 的 Go 供应
-        rm -rf $WRT_DIR/feeds/packages/lang/golang
+        # 2. 核心补丁：修改 golang 编译脚本，强制其使用系统安装的 Go 1.24
+        # 我们寻找所有的 golang-build.sh 并强行修改其中的 GO_EXE 变量
+        find feeds/packages/lang/golang -name "golang-build.sh" -exec sed -i "s|GO_EXE=.*|GO_EXE=$(which go)|g" {} + || true
         
-        # 2. 强行把编译系统调用的 go 指向 Actions 环境的 Go 1.24
-        # 这一步非常关键：直接修改 golang-build.sh 的默认路径
-        find $WRT_DIR/feeds/packages/lang/golang -name "golang-build.sh" -exec sed -i "s|GO_EXE=.*|GO_EXE=$(which go)|g" {} + || true
+        # 3. 建立硬链接伪装：让 OpenWrt 以为 host 工具链里已经有 Go 了
+        mkdir -p staging_dir/host/bin
+        ln -sf $(which go) staging_dir/host/bin/go
+        ln -sf $(which go) staging_dir/host/bin/gofmt
+        ln -sf $(which go) staging_dir/host/bin/node # 顺便解决可能存在的 Node 环境问题
         
-        # 3. 创建软链接，防止 Makefile 走偏
-        mkdir -p $WRT_DIR/staging_dir/host/bin
-        ln -sf $(which go) $WRT_DIR/staging_dir/host/bin/go
-        ln -sf $(which go) $WRT_DIR/staging_dir/host/bin/gofmt
+        # 4. 设置环境变量，告诉 Go 编译器不要去下载它自己的工具链
+        echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
         
-        echo "✅ Go 劫持状态确认：$(go version)"
+        echo "✅ Go 环境已锁定为 1.24，开始准备 sing-box 编译"
+        go version
 
     - name: 检查空间使用情况
       if: (!cancelled())
