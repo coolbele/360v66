@@ -51,11 +51,24 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: 安装/更新 Go 语言环境
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24.0'
-        cache: false
+    - name: 深度劫持 Go 编译环境
+      run: |
+        # 使用全路径，规避 cd 找不到目录的问题
+        WRT_DIR="$GITHUB_WORKSPACE/openwrt"
+        
+        # 1. 彻底切断官方 Feeds 的 Go 供应
+        rm -rf $WRT_DIR/feeds/packages/lang/golang
+        
+        # 2. 强行把编译系统调用的 go 指向 Actions 环境的 Go 1.24
+        # 这一步非常关键：直接修改 golang-build.sh 的默认路径
+        find $WRT_DIR/feeds/packages/lang/golang -name "golang-build.sh" -exec sed -i "s|GO_EXE=.*|GO_EXE=$(which go)|g" {} + || true
+        
+        # 3. 创建软链接，防止 Makefile 走偏
+        mkdir -p $WRT_DIR/staging_dir/host/bin
+        ln -sf $(which go) $WRT_DIR/staging_dir/host/bin/go
+        ln -sf $(which go) $WRT_DIR/staging_dir/host/bin/gofmt
+        
+        echo "✅ Go 劫持状态确认：$(go version)"
 
     - name: 检查空间使用情况
       if: (!cancelled())
