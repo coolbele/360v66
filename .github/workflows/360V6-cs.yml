@@ -62,26 +62,42 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 强制劫持 Go 环境 (支持 sing-box 1.24 编译)
-      # 专家注：此步骤必须在 feeds install 之后，编译开始之前
+    - name: 强制劫持 Go 环境 (深度爆破)
       working-directory: openwrt
       run: |
-        # 1. 物理移除 feeds 里的旧 Go 源码，防止触发自动下载旧版 Go
-        rm -rf feeds/packages/lang/golang
+        # 1. 创建伪装目录
+        mkdir -p feeds/packages/lang/golang
         
-        # 2. 建立硬链接伪装：强行让编译系统调用系统自带的 Go 1.22/1.24
+        # 2. 伪造核心 mk 文件，让所有 Go 插件以为环境还在
+        # 我们定义 GoPackage/Build/Compile 为空，因为我们直接用系统命令编译
+        cat <<EOF > feeds/packages/lang/golang/golang-package.mk
+        GO_TARGET_DEPENDS:=
+        define GoPackage/Build/Compile
+        	cd \$(1) && \
+        	GOPATH=\$(GO_PKG_BUILD_DIR)/.go \
+        	GOMODCACHE=\$(GO_PKG_BUILD_DIR)/.mod-cache \
+        	GO111MODULE=on \
+        	GOTOOLCHAIN=local \
+        	$(which go) build -v -trimpath -ldflags "-s -w" -o \$(1)/\$(GO_PKG_BINARY) \$(GO_PKG_BUILD_PKG)
+        endef
+        define GoPackage/Build/Install
+        	\$(INSTALL_DIR) \$(1)/usr/bin
+        	\$(INSTALL_BIN) \$(GO_PKG_BUILD_DIR)/\$(GO_PKG_BINARY) \$(1)/usr/bin/
+        endef
+        EOF
+
+        # 3. 告诉编译系统 golang/host 已经“装好了”
+        mkdir -p staging_dir/host/stamp
+        touch staging_dir/host/stamp/.golang_installed
+        
+        # 4. 建立系统 Go 的软链接
         mkdir -p staging_dir/host/bin
         ln -sf $(which go) staging_dir/host/bin/go
-        ln -sf $(which go) staging_dir/host/bin/gofmt
+        ln -sf $(which gofmt) staging_dir/host/bin/gofmt
         
-        # 3. 强制锁定 Go 工具链，禁止自动降级
+        # 5. 注入全局变量，强制使用本地工具链
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-        
-        # 4. 特别处理：删除可能导致冲突的 geoview (如不需要)
-        # rm -rf feeds/passwall_packages/geoview
-        
-        echo "✅ Go 环境劫持成功，当前版本："
-        go version
+        echo "✅ Go 环境深度伪装完成"
 
     - name: 导入配置 & 执行脚本 P2
       run: |
