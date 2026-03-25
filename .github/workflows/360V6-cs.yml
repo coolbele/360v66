@@ -46,6 +46,19 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
+    - name: 安装最新版 Go (1.24.7)
+      run: |
+        # 下载官方指定的 1.24.7 版本
+        curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
+        sudo rm -rf /usr/local/go
+        sudo tar -C /usr/local -xzf go.tar.gz
+        
+        # 将新版 Go 加入系统路径
+        echo "/usr/local/go/bin" >> $GITHUB_PATH
+        
+        # 验证版本输出是否为 1.24.7
+        /usr/local/go/bin/go version
+
     - name: 克隆源码
       working-directory: /workdir
       run: |
@@ -67,7 +80,7 @@ jobs:
         # 1. 创建伪装目录
         mkdir -p feeds/packages/lang/golang
         
-        # 2. 伪造核心 mk 文件
+        # 2. 伪造核心 mk 文件，对接系统 1.24.7
         cat <<EOF > feeds/packages/lang/golang/golang-package.mk
         GO_TARGET_DEPENDS:=
         define GoPackage/Build/Compile
@@ -76,7 +89,7 @@ jobs:
         	GOMODCACHE=\$(GO_PKG_BUILD_DIR)/.mod-cache \
         	GO111MODULE=on \
         	GOTOOLCHAIN=local \
-        	$(which go) build -v -trimpath -ldflags "-s -w" -o \$(1)/\$(GO_PKG_BINARY) \$(GO_PKG_BUILD_PKG)
+        	$(which go) build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=' -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0 -s -w -buildid=" -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0" -o \$(1)/\$(GO_PKG_BINARY) \$(GO_PKG_BUILD_PKG)
         endef
         define GoPackage/Build/Install
         	\$(INSTALL_DIR) \$(1)/usr/bin
@@ -84,27 +97,25 @@ jobs:
         endef
         EOF
 
-        # 3. 告诉编译系统 golang/host 已经安装
+        # 3. 告诉编译系统 golang/host 已就绪
         mkdir -p staging_dir/host/stamp
         touch staging_dir/host/stamp/.golang_installed
         
-        # 4. 建立系统 Go 的软链接
+        # 4. 建立 Go 1.24.7 的硬核软链接
         mkdir -p staging_dir/host/bin
         ln -sf $(which go) staging_dir/host/bin/go
         ln -sf $(which gofmt) staging_dir/host/bin/gofmt
         
-        # 5. 注入全局变量
+        # 5. 强制本地化
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-        echo "✅ Go 环境深度伪装完成"
+        echo "✅ Go 1.24.7 深度劫持完成"
 
     - name: 剔除问题插件 (geoview)
       working-directory: openwrt
       run: |
-        # 物理删除源码，防止编译器尝试编译
         rm -rf feeds/passwall_packages/geoview
-        # 如果 .config 已存在，强制关闭它
         [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
-        echo "✅ geoview 干扰排除完成"
+        echo "✅ geoview 已清理"
 
     - name: 导入配置 & 执行脚本 P2
       run: |
@@ -164,7 +175,7 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
         body: |
           360v6 测试版 (4.4 内核)
-          Sing-box 已集成
+          Sing-box v1.13.3 (使用强力 Go 1.24.7 编译)
           管理地址：10.0.10.1
           密码：password
 
