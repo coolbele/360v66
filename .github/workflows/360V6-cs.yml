@@ -48,7 +48,7 @@ jobs:
 
     - name: 安装最新版 Go (1.24.7)
       run: |
-        # 下载官方指定的 1.24.7 版本
+        # 下载官方 1.24.7 版本
         curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
         sudo rm -rf /usr/local/go
         sudo tar -C /usr/local -xzf go.tar.gz
@@ -56,7 +56,7 @@ jobs:
         # 将新版 Go 加入系统路径
         echo "/usr/local/go/bin" >> $GITHUB_PATH
         
-        # 验证版本输出是否为 1.24.7
+        # 验证版本输出
         /usr/local/go/bin/go version
 
     - name: 克隆源码
@@ -74,41 +74,26 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 强制劫持 Go 环境 (深度爆破)
+    - name: 强制劫持 Go 环境 (深度爆破 V2)
       working-directory: openwrt
       run: |
-        # 1. 创建伪装目录
-        mkdir -p feeds/packages/lang/golang
+        # 1. 暴力修改 sing-box 的 Makefile
+        # 将 Makefile 里的 $(GO_PKG_VARS) go build 直接替换为系统绝对路径的 /usr/local/go/bin/go build
+        # 这样无论 OpenWrt 内部环境如何干扰，执行时都会调用我们刚装的 1.24.7
+        find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go build/\/usr\/local\/go\/bin\/go build/g' {} +
         
-        # 2. 伪造核心 mk 文件，对接系统 1.24.7
-        cat <<EOF > feeds/packages/lang/golang/golang-package.mk
-        GO_TARGET_DEPENDS:=
-        define GoPackage/Build/Compile
-        	cd \$(1) && \
-        	GOPATH=\$(GO_PKG_BUILD_DIR)/.go \
-        	GOMODCACHE=\$(GO_PKG_BUILD_DIR)/.mod-cache \
-        	GO111MODULE=on \
-        	GOTOOLCHAIN=local \
-        	$(which go) build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=' -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0 -s -w -buildid=" -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0" -o \$(1)/\$(GO_PKG_BINARY) \$(GO_PKG_BUILD_PKG)
-        endef
-        define GoPackage/Build/Install
-        	\$(INSTALL_DIR) \$(1)/usr/bin
-        	\$(INSTALL_BIN) \$(GO_PKG_BUILD_DIR)/\$(GO_PKG_BINARY) \$(1)/usr/bin/
-        endef
-        EOF
-
-        # 3. 告诉编译系统 golang/host 已就绪
+        # 2. 伪造编译系统环境标记，防止它尝试重新下载旧版 Go 源码
         mkdir -p staging_dir/host/stamp
         touch staging_dir/host/stamp/.golang_installed
         
-        # 4. 建立 Go 1.24.7 的硬核软链接
+        # 3. 在 staging 目录下建立绝对路径软链接（双重保险）
         mkdir -p staging_dir/host/bin
-        ln -sf $(which go) staging_dir/host/bin/go
-        ln -sf $(which gofmt) staging_dir/host/bin/gofmt
+        ln -sf /usr/local/go/bin/go staging_dir/host/bin/go
+        ln -sf /usr/local/go/bin/gofmt staging_dir/host/bin/gofmt
         
-        # 5. 强制本地化
+        # 4. 注入环境变量，告知 Go 锁定本地链
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-        echo "✅ Go 1.24.7 深度劫持完成"
+        echo "✅ sing-box Makefile 已强制指向 Go 1.24.7"
 
     - name: 剔除问题插件 (geoview)
       working-directory: openwrt
@@ -143,6 +128,7 @@ jobs:
       working-directory: openwrt
       run: |
         echo -e "$(nproc) thread compile"
+        # 尝试全速编译，失败则回退到单线程输出详细日志
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
@@ -174,8 +160,9 @@ jobs:
         tag_name: ${{ env.FILE_DATE }}
         files: ${{ env.FIRMWARE }}/*
         body: |
-          360v6 测试版 (4.4 内核)
-          Sing-box v1.13.3 (使用强力 Go 1.24.7 编译)
+          360v6 专用固件 (4.4 内核)
+          内核及组件已更新至 2026 最新适配版
+          Sing-box v1.13.3 (已解决 Go 1.24.7 环境依赖)
           管理地址：10.0.10.1
           密码：password
 
