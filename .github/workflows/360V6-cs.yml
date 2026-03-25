@@ -50,7 +50,6 @@ jobs:
       working-directory: /workdir
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        # 建立软链接，方便后续步骤直接访问 openwrt 目录
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: 更新 & 安装 feeds & 执行脚本 P1
@@ -68,8 +67,7 @@ jobs:
         # 1. 创建伪装目录
         mkdir -p feeds/packages/lang/golang
         
-        # 2. 伪造核心 mk 文件，让所有 Go 插件以为环境还在
-        # 我们定义 GoPackage/Build/Compile 为空，因为我们直接用系统命令编译
+        # 2. 伪造核心 mk 文件
         cat <<EOF > feeds/packages/lang/golang/golang-package.mk
         GO_TARGET_DEPENDS:=
         define GoPackage/Build/Compile
@@ -86,7 +84,7 @@ jobs:
         endef
         EOF
 
-        # 3. 告诉编译系统 golang/host 已经“装好了”
+        # 3. 告诉编译系统 golang/host 已经安装
         mkdir -p staging_dir/host/stamp
         touch staging_dir/host/stamp/.golang_installed
         
@@ -95,9 +93,18 @@ jobs:
         ln -sf $(which go) staging_dir/host/bin/go
         ln -sf $(which gofmt) staging_dir/host/bin/gofmt
         
-        # 5. 注入全局变量，强制使用本地工具链
+        # 5. 注入全局变量
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
         echo "✅ Go 环境深度伪装完成"
+
+    - name: 剔除问题插件 (geoview)
+      working-directory: openwrt
+      run: |
+        # 物理删除源码，防止编译器尝试编译
+        rm -rf feeds/passwall_packages/geoview
+        # 如果 .config 已存在，强制关闭它
+        [ -f .config ] && sed -i 's/CONFIG_PACKAGE_geoview=y/CONFIG_PACKAGE_geoview=n/g' .config || true
+        echo "✅ geoview 干扰排除完成"
 
     - name: 导入配置 & 执行脚本 P2
       run: |
@@ -105,7 +112,6 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-        # 重新运行一次 install 以防 P2 脚本引入了新包
         ./scripts/feeds install -a
 
     - name: 下载软件包
@@ -126,7 +132,6 @@ jobs:
       working-directory: openwrt
       run: |
         echo -e "$(nproc) thread compile"
-        # 核心：如果全线程失败，自动转单线程并输出详细日志
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
