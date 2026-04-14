@@ -4,7 +4,7 @@
 # Build OpenWrt using GitHub Actions
 #
 
-name: 360V6-Final-Build
+name: 360V6-Special-Build
 permissions: write-all
 
 on:
@@ -17,8 +17,8 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://github.com/coolbele/sdf8057-ipq6000
-  REPO_BRANCH: master
+  REPO_URL: https://github.com/coolbele/360v66
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: ./config/hao.config
   DIY_P1_SH: ./scripts/360V6/diy2.sh
@@ -46,21 +46,20 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: 3. 安装 Go 1.24.7 (支持最新 Sing-box)
+    - name: 3. 安装 Go 1.24.7
       run: |
         curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
         sudo rm -rf /usr/local/go
         sudo tar -C /usr/local -xzf go.tar.gz
         echo "/usr/local/go/bin" >> $GITHUB_PATH
-        /usr/local/go/bin/go version
 
-    - name: 4. 克隆源码
+    - name: 4. 克隆源码 (360v66 专项)
       working-directory: /workdir
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: 5. 更新 Feeds 并锁定 Sing-box v1.11.3
+    - name: 5. 更新 Feeds 并锁定 Sing-box
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
@@ -68,51 +67,38 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P1_SH
         ./scripts/feeds update -a
         
-        # 强制锁定 Sing-box 版本并绕过 SHA256 校验
+        # 强制锁定 Sing-box v1.11.3 并跳过哈希校验
         SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile)
         if [ -f "$SB_MAKEFILE" ]; then
           sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
           sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' "$SB_MAKEFILE"
           sed -i '/PKG_HASH:=/d' "$SB_MAKEFILE"
           sed -i '/PKG_VERSION:=1.11.3/a PKG_HASH:=skip' "$SB_MAKEFILE"
-          # 绕过下载脚本报错
           sed -i 's/exit 255;/exit 0;/g' scripts/download.pl
         fi
         
         ./scripts/feeds install -a
 
-    - name: 6. 劫持 Go 编译环境
+    - name: 6. 劫持 Go 编译路径
       working-directory: openwrt
       run: |
         sudo ln -sf /usr/local/go/bin/go /usr/bin/go
         sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
-        
-        # 强制 Golang 插件使用新版 Go
-        BUILD_SH="feeds/packages/lang/golang/golang-build.sh"
-        if [ -f "$BUILD_SH" ]; then
-          sed -i 's/go build/\/usr\/local\/go\/bin\/go build/g' "$BUILD_SH"
-          sed -i 's/go install/\/usr\/local\/go\/bin\/go install/g' "$BUILD_SH"
-        fi
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
-    - name: 7. 环境修复 (解决 wolfssl & iproute2 冲突)
+    - name: 7. 环境修复 (解决 iproute2 & wolfssl 冲突)
       working-directory: openwrt
       run: |
-        # 修复 wolfssl 补丁冲突 (针对 4.4 内核环境)
-        WOLF_PATCH="package/libs/wolfssl/patches/200-ecc-rng.patch"
-        [ -f "$WOLF_PATCH" ] && rm -f "$WOLF_PATCH" && echo "✅ 已移除 wolfssl 冲突补丁"
-
-        # 彻底解决 ip-tiny 缺失 libselinux.so.1 问题
-        IP_MAKEFILE="package/network/utils/iproute2/Makefile"
-        if [ -f "$IP_MAKEFILE" ]; then
-          sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' "$IP_MAKEFILE"
-          sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' "$IP_MAKEFILE"
-          # 核心修复：禁止依赖检查
-          sed -i 's/CHECK_LIBRARIES:=1/CHECK_LIBRARIES:=0/g' "$IP_MAKEFILE" 2>/dev/null || true
-          echo "✅ 已深度禁用 iproute2 的 SELinux 探测"
-        fi
+        # 【核心修复】深度禁用 iproute2 对 SELinux 的自动探测
+        # 即使宿主机有 libselinux，也强制告诉编译器不准使用
+        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
+        find package/network/utils/iproute2 -name Makefile -exec sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' {} +
         
-        # 移除 geoview 插件防止编译死循环
+        # 修复 wolfssl 针对旧内核的补丁冲突
+        WOLF_PATCH="package/libs/wolfssl/patches/200-ecc-rng.patch"
+        [ -f "$WOLF_PATCH" ] && rm -f "$WOLF_PATCH"
+        
+        # 移除 geoview (导致 360v66 仓库报错的常客)
         rm -rf feeds/passwall_packages/geoview
 
     - name: 8. 导入配置与依赖补偿
@@ -122,13 +108,9 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
         
-        # 补偿：强制开启 libselinux，彻底解决 Package missing dependencies 报错
+        # 强制开启关键库，防止 Package missing dependencies 报错
         echo "CONFIG_PACKAGE_libselinux=y" >> .config
-        # 补齐 hostapd 依赖防止 Error 5
         echo "CONFIG_PACKAGE_hostapd-common=y" >> .config
-        # 确保选中 PassWall 和 SingBox
-        echo "CONFIG_PACKAGE_luci-app-passwall=y" >> .config
-        echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" >> .config
         
         ./scripts/feeds install -a
 
@@ -145,7 +127,6 @@ jobs:
       working-directory: openwrt
       run: |
         echo -e "$(nproc) thread compile"
-        # 如果报错则自动切换单线程输出详细日志
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
@@ -161,11 +142,11 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 12. 上传固件
+    - name: 12. 上传固件至 Artifacts
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_360V6${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_360V6_Special${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
     - name: 13. 发布 Release
@@ -177,14 +158,13 @@ jobs:
         tag_name: ${{ env.FILE_DATE }}
         files: ${{ env.FIRMWARE }}/*
         body: |
-          360V6 (IPQ6000) 修复版固件
-          - Go: 1.24.7
-          - Sing-box: v1.11.3
-          - 修复了 wolfssl 补丁冲突
-          - 强制解决了 ip-tiny 的 libselinux 依赖报错
+          360V6 (coolbele/360v66) 专项修复版
+          - 内核: 4.4 / Sing-box: v1.11.3
+          - 强制禁用 SELinux 探测，解决 ip-tiny 报错
+          - 修复 wolfssl 补丁冲突
           - 管理地址: 10.0.10.1 / 密码: password
 
-    - name: 14. 清理记录
+    - name: 14. 清理工作流
       uses: Mattraks/delete-workflow-runs@v2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
