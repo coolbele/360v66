@@ -1,4 +1,9 @@
-name: 360V6-cs
+#
+# Copyright (c) 2019-2026 P3TERX <https://p3terx.com>
+# 360V6 Special Build - Optimized by Gemini AI
+#
+
+name: 360V6-Special-Build
 permissions: write-all
 
 on:
@@ -12,14 +17,11 @@ on:
 
 env:
   REPO_URL: https://github.com/coolbele/sdf8057-ipq6000
-  REPO_BRANCH: master
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: ./config/yu.config
   DIY_P1_SH: ./scripts/360V6/diy2.sh
   DIY_P2_SH: ./scripts/360V6/360V6-cs.sh
-  UPLOAD_BIN_DIR: true
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
 jobs:
@@ -30,140 +32,104 @@ jobs:
     - name: 1. 检查项目
       uses: actions/checkout@main
 
-    - name: 2. 初始化编译环境
+    - name: 2. 初始化环境与深度清理
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
+        sudo docker image prune -a -f
         sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
         sudo timedatectl set-timezone $TZ
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
+
     - name: 3. 安装 Go 1.24.7
       run: |
         curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
         sudo rm -rf /usr/local/go
         sudo tar -C /usr/local -xzf go.tar.gz
         echo "/usr/local/go/bin" >> $GITHUB_PATH
-        /usr/local/go/bin/go version
+
     - name: 4. 克隆源码
       working-directory: /workdir
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-    - name: 5. 更新 Feeds 并锁定 Sing-box v1.11.3 (含哈希修复)
+        echo "OPENWRT_PATH=$PWD/openwrt" >> $GITHUB_ENV
+
+    - name: 5. 更新 Feeds 并修复 Sing-box
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
+        cd ${{ env.OPENWRT_PATH }}
+        [ -e $GITHUB_WORKSPACE/$FEEDS_CONF ] && cp $GITHUB_WORKSPACE/$FEEDS_CONF feeds.conf.default
+        chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
         $GITHUB_WORKSPACE/$DIY_P1_SH
         ./scripts/feeds update -a
         
-        # 强制修改版本并绕过哈希校验，防止 download 阶段 Error 255
-        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile)
+        # 针对 Passwall 里的 Sing-box 进行版本锁定
+        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile 2>/dev/null | head -n 1)
         if [ -f "$SB_MAKEFILE" ]; then
           sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
           sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' "$SB_MAKEFILE"
           sed -i '/PKG_HASH:=/d' "$SB_MAKEFILE"
-          sed -i '/PKG_MIRROR_HASH:=/d' "$SB_MAKEFILE"
-          sed -i '/PKG_VERSION:=1.11.3/a PKG_HASH:=skip' "$SB_MAKEFILE"
-          # 修改下载脚本强制跳过校验
-          sed -i 's/exit 255;/exit 0;/g' scripts/download.pl
-          echo "✅ Sing-box 锁定 v1.11.3 并绕过哈希"
         fi
-        
         ./scripts/feeds install -a
-    - name: 6. 劫持编译脚本 (强制使用 Go 1.24.7)
-      working-directory: openwrt
+
+    - name: 6. 劫持 Go 编译路径
       run: |
-        sudo ln -sf /usr/local/go/bin/go /usr/bin/go
-        sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
-        
-        BUILD_SH="feeds/packages/lang/golang/golang-build.sh"
-        if [ -f "$BUILD_SH" ]; then
-          sed -i 's/go build/\/usr\/local\/go\/bin\/go build/g' "$BUILD_SH"
-          sed -i 's/go install/\/usr\/local\/go\/bin\/go install/g' "$BUILD_SH"
-        fi
-        find feeds/passwall_packages/sing-box -name Makefile -exec sed -i 's/\$(GO_PKG_VARS) go/\/usr\/local\/go\/bin\/go/g' {} +
+        mkdir -p $HOME/.local/bin
+        ln -sf /usr/local/go/bin/go $HOME/.local/bin/go
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-    - name: 7. 环境修复 (解决 wolfssl/iproute2/geoview 报错)
-      working-directory: openwrt
+        echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
+
+    - name: 7. 环境硬修复 (解决 iproute2 & wolfssl 冲突)
       run: |
-        # 彻底移除可能导致循环依赖的插件
+        cd ${{ env.OPENWRT_PATH }}
+        # 强制禁用 iproute2 SELinux 探测
+        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
+        find package/network/utils/iproute2 -name Makefile -exec sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' {} +
+        # 移除冲突补丁
+        rm -f package/libs/wolfssl/patches/200-ecc-rng.patch || true
         rm -rf feeds/passwall_packages/geoview
-        
-        # 修复 wolfssl 补丁冲突 (200-ecc-rng.patch)
-        WOLF_PATCH="package/libs/wolfssl/patches/200-ecc-rng.patch"
-        [ -f "$WOLF_PATCH" ] && rm -f "$WOLF_PATCH" && echo "✅ 已移除 wolfssl 冲突补丁"
-        # 修复 iproute2 缺少 libselinux 依赖的问题
-        IPR_MAKEFILE="package/network/utils/iproute2/Makefile"
-        if [ -f "$IPR_MAKEFILE" ]; then
-          sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' "$IPR_MAKEFILE"
-          sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' "$IPR_MAKEFILE"
-          echo "✅ 已禁用 iproute2 的 SELinux 依赖"
-        fi
-    - name: 8. 导入配置并注入强制依赖
+
+    - name: 8. 导入配置与最终依赖修正
       run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
+        cd ${{ env.OPENWRT_PATH }}
+        [ -e $GITHUB_WORKSPACE/$CONFIG_FILE ] && cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+        chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
         
-        # 强制补齐 hostapd 基础依赖，防止 Error 5
-        echo "CONFIG_PACKAGE_hostapd-common=y" >> .config
-        echo "CONFIG_PACKAGE_libselinux=y" >> .config
+        # 自动化冲突修正
+        sed -i 's/CONFIG_PACKAGE_wpad-openssl=y/CONFIG_PACKAGE_wpad-openssl=n/g' .config
+        sed -i 's/CONFIG_PACKAGE_libselinux=y/CONFIG_PACKAGE_libselinux=n/g' .config
+        echo "CONFIG_PACKAGE_wpad-wolfssl=y" >> .config
         
         ./scripts/feeds install -a
-    - name: 9. 下载软件包
-      id: package
-      working-directory: openwrt
-      run: |
         make defconfig
+
+    - name: 9. 下载软件包
+      run: |
+        cd ${{ env.OPENWRT_PATH }}
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
-    - name: 10. 编译固件
+
+    - name: 10. 执行编译
       id: compile
-      working-directory: openwrt
       run: |
+        cd ${{ env.OPENWRT_PATH }}
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-    - name: 11. 整理文件
-      id: organize
+
+    - name: 11. 整理并上传
       if: steps.compile.outputs.status == 'success'
       run: |
-        cd openwrt/bin/targets/*/*
+        cd ${{ env.OPENWRT_PATH }}/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-    - name: 12. 上传固件至 Artifacts
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
 
-    - name: 13. 发布 Release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 12. 上传至 Artifacts
+      uses: actions/upload-artifact@main
+      if: env.FIRMWARE != ''
       with:
-        tag_name: ${{ env.FILE_DATE }}
-        files: ${{ env.FIRMWARE }}/*
-        body: |
-          360v6 稳定版固件
-          内核: 4.4 / Sing-box: v1.11.3 (锁定)
-          环境: Go 1.24.7
-          修复: wolfssl/iproute2 编译冲突
-          管理地址: 10.0.10.1 / 密码: password
-    - name: 14. 清理工作流
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
+        name: OpenWrt_360V6_Fixed
+        path: ${{ env.FIRMWARE }}
