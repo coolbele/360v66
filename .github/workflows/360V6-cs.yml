@@ -88,21 +88,29 @@ jobs:
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
         echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
 
-    - name: 7. 环境硬修复 (防止 ip-tiny 依赖 libselinux)
+    - name: 7. 环境硬修复 (逻辑驱动版)
       run: |
         cd ${{ env.OPENWRT_PATH }}
         
-        # 1. 暴力清除 iproute2 对 SELinux 的探测逻辑
-        # 修改 iproute2 的配置脚本，强制将其探测结果改为 0
-        find package/network/utils/iproute2 -name "configure" -exec sed -i 's/check_selinux/echo "disabled"/g' {} +
-        
-        # 2. 修改 Makefile 强制 HAVE_SELINUX 为 n
-        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
-        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX=y/HAVE_SELINUX=n/g' {} +
-        
-        # 3. 针对 wolfssl 和 geoview 的常规修复
+        # [逻辑点 1] 强行修改 iproute2-tiny 的探测入口
+        # 寻找所有的 configure 文件，直接让 check_selinux 返回 false
+        find package/network/utils/iproute2 -name "configure" | while read -r config_file; do
+          sed -i 's/check_selinux()/check_selinux_disabled()/g' "$config_file"
+          echo "check_selinux() { return 1; }" >> "$config_file"
+        done
+
+        # [逻辑点 2] 拦截 Makefile 中的变量注入
+        # 针对 iproute2-tiny 目录，创建硬性覆盖
+        IP_PATH="package/network/utils/iproute2"
+        if [ -d "$IP_PATH" ]; then
+          sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' $IP_PATH/Makefile
+          # 在编译参数中显式加入反向标记
+          sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' $IP_PATH/Makefile
+        fi
+
+        # [逻辑点 3] 移除可能干扰的第三方包
+        rm -rf feeds/passwall_packages/geoview || true
         rm -f package/libs/wolfssl/patches/200-ecc-rng.patch || true
-        rm -rf feeds/passwall_packages/geoview
 
     - name: 8. 导入配置与最终依赖修正
       run: |
@@ -129,7 +137,10 @@ jobs:
       id: compile
       run: |
         cd ${{ env.OPENWRT_PATH }}
-        echo -e "$(nproc) thread compile"
+        # 先单独编译 iproute2 以确认补丁生效
+        make package/network/utils/iproute2/compile V=s -j1
+        
+        # 再进行整体编译
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
 
