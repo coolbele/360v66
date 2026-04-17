@@ -59,15 +59,20 @@ jobs:
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: 5. 更新 Feeds 并修复 Sing-box
+      working-directory: openwrt
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
+        # 确保 feeds.conf 已经到位
+        [ -e $GITHUB_WORKSPACE/$FEEDS_CONF ] && mv $GITHUB_WORKSPACE/$FEEDS_CONF feeds.conf.default
+        
+        # 执行 DIY P1 脚本 (注意路径)
+        chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
         $GITHUB_WORKSPACE/$DIY_P1_SH
+        
+        # 更新与安装 feeds
         ./scripts/feeds update -a
         
         # 针对 Passwall 里的 Sing-box 进行版本强制锁定
-        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile)
+        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile 2>/dev/null)
         if [ -f "$SB_MAKEFILE" ]; then
           sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
           sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' "$SB_MAKEFILE"
