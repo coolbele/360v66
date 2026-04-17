@@ -36,8 +36,15 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
+        # 深度清理磁盘空间
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
         sudo docker image prune -a -f
+        
+        # 【核心修正】彻底移除宿主机的 SELinux 干扰
+        sudo apt-get remove -y libselinux1-dev
+        sudo find /usr -name "selinux.h" -delete || true
+        
+        # 执行原有的环境初始化
         sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
         sudo timedatectl set-timezone $TZ
         sudo mkdir -p /workdir
@@ -81,13 +88,19 @@ jobs:
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
         echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
 
-    - name: 7. 环境硬修复 (解决 iproute2 & wolfssl 冲突)
+    - name: 7. 环境硬修复 (防止 ip-tiny 依赖 libselinux)
       run: |
         cd ${{ env.OPENWRT_PATH }}
-        # 强制禁用 iproute2 SELinux 探测
+        
+        # 1. 暴力清除 iproute2 对 SELinux 的探测逻辑
+        # 修改 iproute2 的配置脚本，强制将其探测结果改为 0
+        find package/network/utils/iproute2 -name "configure" -exec sed -i 's/check_selinux/echo "disabled"/g' {} +
+        
+        # 2. 修改 Makefile 强制 HAVE_SELINUX 为 n
         find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
-        find package/network/utils/iproute2 -name Makefile -exec sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' {} +
-        # 移除冲突补丁
+        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX=y/HAVE_SELINUX=n/g' {} +
+        
+        # 3. 针对 wolfssl 和 geoview 的常规修复
         rm -f package/libs/wolfssl/patches/200-ecc-rng.patch || true
         rm -rf feeds/passwall_packages/geoview
 
