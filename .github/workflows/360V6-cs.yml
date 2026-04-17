@@ -1,6 +1,6 @@
 #
 # Copyright (c) 2019-2026 P3TERX <https://p3terx.com>
-# 360V6 Special Build Optimization by Gemini AI
+# 360V6 Special Build - Optimized by Gemini AI
 #
 
 name: 360V6-Special-Build
@@ -36,7 +36,6 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        # 深度清理磁盘空间，防止 Image too large
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
         sudo docker image prune -a -f
         sudo bash -c 'bash <(curl -s https://raw.githubusercontent.com/coolbele/Actions-360v6/refs/heads/main/patches/init_build_environment.sh)'
@@ -49,42 +48,33 @@ jobs:
         curl -L https://go.dev/dl/go1.24.7.linux-amd64.tar.gz -o go.tar.gz
         sudo rm -rf /usr/local/go
         sudo tar -C /usr/local -xzf go.tar.gz
-        # 设置全局路径
         echo "/usr/local/go/bin" >> $GITHUB_PATH
 
     - name: 4. 克隆源码
       working-directory: /workdir
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        echo "OPENWRT_PATH=$PWD/openwrt" >> $GITHUB_ENV
 
     - name: 5. 更新 Feeds 并修复 Sing-box
-      working-directory: openwrt
       run: |
-        # 确保 feeds.conf 已经到位
-        [ -e $GITHUB_WORKSPACE/$FEEDS_CONF ] && mv $GITHUB_WORKSPACE/$FEEDS_CONF feeds.conf.default
-        
-        # 执行 DIY P1 脚本 (注意路径)
+        cd ${{ env.OPENWRT_PATH }}
+        [ -e $GITHUB_WORKSPACE/$FEEDS_CONF ] && cp $GITHUB_WORKSPACE/$FEEDS_CONF feeds.conf.default
         chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
         $GITHUB_WORKSPACE/$DIY_P1_SH
-        
-        # 更新与安装 feeds
         ./scripts/feeds update -a
         
-        # 针对 Passwall 里的 Sing-box 进行版本强制锁定
-        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile 2>/dev/null)
+        # 针对 Passwall 里的 Sing-box 进行版本锁定
+        SB_MAKEFILE=$(find feeds/passwall_packages/sing-box -name Makefile 2>/dev/null | head -n 1)
         if [ -f "$SB_MAKEFILE" ]; then
           sed -i 's/PKG_VERSION:=.*/PKG_VERSION:=1.11.3/g' "$SB_MAKEFILE"
           sed -i 's/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=v1.11.3/g' "$SB_MAKEFILE"
           sed -i '/PKG_HASH:=/d' "$SB_MAKEFILE"
         fi
-        
         ./scripts/feeds install -a
 
-    - name: 6. 劫持编译链 Go 路径
-      working-directory: openwrt
+    - name: 6. 劫持 Go 编译路径
       run: |
-        # 确保编译器优先使用我们下载的 Go 1.24
         mkdir -p $HOME/.local/bin
         ln -sf /usr/local/go/bin/go $HOME/.local/bin/go
         echo "$HOME/.local/bin" >> $GITHUB_PATH
@@ -92,46 +82,48 @@ jobs:
         echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
 
     - name: 7. 环境硬修复 (解决 iproute2 & wolfssl 冲突)
-      working-directory: openwrt
       run: |
-        # 强制禁用 iproute2 对宿主机 SELinux 的探测，防止 Error 2
+        cd ${{ env.OPENWRT_PATH }}
+        # 强制禁用 iproute2 SELinux 探测
         find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
-        # 移除可能导致冲突的补丁和包
+        find package/network/utils/iproute2 -name Makefile -exec sed -i '/MAKE_FLAGS +=/a HAVE_SELINUX=n' {} +
+        # 移除冲突补丁
         rm -f package/libs/wolfssl/patches/200-ecc-rng.patch || true
         rm -rf feeds/passwall_packages/geoview
 
     - name: 8. 导入配置与最终依赖修正
       run: |
-        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
+        cd ${{ env.OPENWRT_PATH }}
+        [ -e $GITHUB_WORKSPACE/$CONFIG_FILE ] && cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+        chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
         
-        # 脚本级修正：强制关闭 wpad 冲突项和 libselinux
+        # 自动化冲突修正
         sed -i 's/CONFIG_PACKAGE_wpad-openssl=y/CONFIG_PACKAGE_wpad-openssl=n/g' .config
         sed -i 's/CONFIG_PACKAGE_libselinux=y/CONFIG_PACKAGE_libselinux=n/g' .config
+        echo "CONFIG_PACKAGE_wpad-wolfssl=y" >> .config
         
         ./scripts/feeds install -a
         make defconfig
 
     - name: 9. 下载软件包
-      working-directory: openwrt
       run: |
+        cd ${{ env.OPENWRT_PATH }}
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
     - name: 10. 执行编译
       id: compile
-      working-directory: openwrt
       run: |
-        # 优先多线程，失败自动切换单线程输出日志
+        cd ${{ env.OPENWRT_PATH }}
+        echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 11. 整理并上传固件
+    - name: 11. 整理并上传
       if: steps.compile.outputs.status == 'success'
       run: |
-        cd openwrt/bin/targets/*/*
+        cd ${{ env.OPENWRT_PATH }}/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
@@ -139,5 +131,5 @@ jobs:
       uses: actions/upload-artifact@main
       if: env.FIRMWARE != ''
       with:
-        name: 360V6-OpenWrt-Fixed
+        name: OpenWrt_360V6_Fixed
         path: ${{ env.FIRMWARE }}
