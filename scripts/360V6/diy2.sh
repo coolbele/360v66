@@ -19,16 +19,12 @@
 
 echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
 echo 'src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main' >>feeds.conf.default
-echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns' >> feeds.conf.default
 echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
 git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
 # 如果之前没加过，执行这一行
 git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 
-# 彻底删除自带的老旧 Golang
-rm -rf feeds/packages/lang/golang
 
-git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
 
 
 #echo 'src-git MyPackages https://github.com/wwz09/MyPackages.git;main' >>feeds.conf.default
