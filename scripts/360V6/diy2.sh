@@ -25,6 +25,12 @@ git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-g
 # 如果之前没加过，执行这一行
 git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 
+# 彻底删除自带的老旧 Golang
+rm -rf feeds/packages/lang/golang
+
+git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
+
+
 #echo 'src-git MyPackages https://github.com/wwz09/MyPackages.git;main' >>feeds.conf.default
 #echo 'src-git passwall2 https://github.com/xiaorouji/openwrt-passwall2' >>feeds.conf.default
 #echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns;v5' >>feeds.conf.default
