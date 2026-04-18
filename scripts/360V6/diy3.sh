@@ -17,8 +17,9 @@
 #echo 'src-git packages_news https://github.com/kenzok8/openwrt-packages.git;master' >>feeds.conf.default
 
 
-echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns' >> feeds.conf.default
-echo 'src-git mihomo https://github.com/morytyann/OpenWrt-mihomo.git;main' >> feeds.conf.default
+#echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns' >> feeds.conf.default
+#echo 'src-git mihomo https://github.com/morytyann/OpenWrt-mihomo.git;main' >> feeds.conf.default
+echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
 git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
 # 如果之前没加过，执行这一行
 git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
