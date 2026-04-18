@@ -20,6 +20,8 @@
 echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
 echo 'src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main' >>feeds.conf.default
 echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns' >> feeds.conf.default
+git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
+
 #echo 'src-git MyPackages https://github.com/wwz09/MyPackages.git;main' >>feeds.conf.default
 #echo 'src-git passwall2 https://github.com/xiaorouji/openwrt-passwall2' >>feeds.conf.default
 #echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns;v5' >>feeds.conf.default
