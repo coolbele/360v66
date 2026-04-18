@@ -18,7 +18,7 @@
 
 
 echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
-echo 'src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main' >>feeds.conf.default
+echo 'src-git passwall_luci https://github.com/coolbele/luci-app-123.git;main' >>feeds.conf.default
 echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
 git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
 # 如果之前没加过，执行这一行
