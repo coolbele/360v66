@@ -72,4 +72,5 @@ sed -i "s/hostname='OpenWrt'/hostname='QihooV6'/g" package/base-files/files/bin/
 # 添加自动挂载磁盘脚本
 # mkdir -p files/etc/hotplug.d/block && wget -O files/etc/hotplug.d/block/30-usbmount https://raw.githubusercontent.com/fichenx/P3TERX_Actions-OpenWrt/main/files/etc/hotplug.d/block/30-usbmount && chmod 755 files/etc/hotplug.d/block/30-usbmount
 
+sed -i 's/CONFIG_PACKAGE_ip-tiny=y/CONFIG_PACKAGE_ip-full=y/' .config # 建议使用 full 版，兼容性更好
 
