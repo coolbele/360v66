@@ -78,36 +78,37 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
         echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
-    - name: 7. 环境硬修复 (物理阻断 + 依赖伪装)
+        
+    - name: 7. 环境硬修复 (路径封锁版)
       run: |
         cd ${{ env.OPENWRT_PATH }}
         
-        # [策略 1] 物理移除宿主机头文件，让 configure 彻底抓瞎
-        sudo rm -rf /usr/include/selinux
-        sudo rm -f /usr/lib/x86_64-linux-gnu/libselinux.*
-        
-        # [策略 2] 强行修改 iproute2 的源码配置，直接禁用 SELinux 定义
-        # 针对 ipq60xx 常见的 5.0 及其以上版本
-        find build_dir -name "config.mk" -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} + 2>/dev/null || true
+        # [逻辑点 1] 强行修改 iproute2 的探测脚本，使其直接忽略 SELinux
+        # 针对 ipq60xx 5.0.0 版本，直接修改其内置 configure
+        find package/network/utils/iproute2 -name "configure" | while read -r config_file; do
+          sed -i 's/check_selinux//g' "$config_file"
+        done
+
+        # [逻辑点 2] 在 Makefile 层面注入强制关闭参数
         find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX:=y/HAVE_SELINUX:=n/g' {} +
+        find package/network/utils/iproute2 -name Makefile -exec sed -i 's/HAVE_SELINUX=y/HAVE_SELINUX=n/g' {} +
+
+        # [逻辑点 3] 劫持编译环境变量，禁止链接器访问宿主机 selinux 路径
+        echo "EXTRA_CFLAGS += -DNO_SELINUX" >> .config
+        echo "EXTRA_LDFLAGS += -L/usr/lib/x86_64-linux-gnu -l:libselinux.so.1 -n" >> .config # 这是一个占位技巧
         
-        # [策略 3] 注入假定义到全局变量
-        echo "export HAVE_SELINUX:=n" >> $GITHUB_ENV
-        
-    - name: 8. 导入配置与依赖伪装
+    - name: 8. 导入配置与最终依赖修正
       run: |
         cd ${{ env.OPENWRT_PATH }}
         [ -e $GITHUB_WORKSPACE/$CONFIG_FILE ] && cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
         chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
         
-        # [核心修正] 解决 "missing dependencies: libselinux.so.1"
-        # 1. 在 config 中强行启用 libselinux，满足打包脚本的依赖检查
-        sed -i 's/CONFIG_PACKAGE_libselinux=n/CONFIG_PACKAGE_libselinux=y/g' .config
+        # 强制在 config 中显式关闭 libselinux (让打包脚本不检查它)
         sed -i '/CONFIG_PACKAGE_libselinux/d' .config
-        echo "CONFIG_PACKAGE_libselinux=y" >> .config
+        echo "CONFIG_PACKAGE_libselinux=n" >> .config
         
-        # 2. 修正 wpad 冲突
+        # 修正 wpad 冲突
         sed -i 's/CONFIG_PACKAGE_wpad-openssl=y/CONFIG_PACKAGE_wpad-openssl=n/g' .config
         
         ./scripts/feeds install -a
@@ -118,13 +119,18 @@ jobs:
         cd ${{ env.OPENWRT_PATH }}
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
+        
     - name: 10. 执行编译
       id: compile
       run: |
         cd ${{ env.OPENWRT_PATH }}
-        echo -e "$(nproc) thread compile"
+        # 重点：在编译命令前加入 LD_LIBRARY_PATH 保护，确保使用交叉编译链而非宿主机
+        make package/network/utils/iproute2/clean
+        make package/network/utils/iproute2/compile V=s
+        
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
+        
     - name: 11. 整理并上传
       if: steps.compile.outputs.status == 'success'
       run: |
