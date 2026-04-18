@@ -103,7 +103,7 @@ CONFIG_PACKAGE_luci-i18n-vlmcsd-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-wolplus-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-mwan3-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-mwan3helper-zh-cn=y
-CONFIG_PACKAGE_mosdns=y
+
 
 # 开启 OpenVPN 核心 (带 OpenSSL 支持)
 CONFIG_PACKAGE_openvpn-openssl=y
@@ -129,14 +129,30 @@ CONFIG_PACKAGE_luci-app-lucky=y
 CONFIG_PACKAGE_luci-i18n-lucky-zh-cn=y
 
 
-CONFIG_PACKAGE_luci-app-lucky=y
-CONFIG_PACKAGE_luci-i18n-lucky-zh-cn=y
-CONFIG_PACKAGE_luci-app-mihomo=y
-CONFIG_PACKAGE_luci-i18n-mihomo-zh-cn=y
-CONFIG_PACKAGE_luci-app-mosdns=y
-CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn=y
+# --- SSR+ 主程序与语言包 ---
+CONFIG_PACKAGE_luci-app-ssr-plus=y
+CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn=y
 
+# --- SSR+ 功能扩展 ---
+# 开启 Sing-Box 支持 (处理 Hysteria2, Tuic 等协议的关键)
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_SingBox=y
+# 开启 Hysteria2 协议支持
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Hysteria2=y
+# 开启 负载均衡 支持 (SSR+ 的负载均衡通常依赖 haproxy)
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Haproxy=y
 
+# --- 核心二进制程序 (必选) ---
+CONFIG_PACKAGE_sing-box=y
+CONFIG_PACKAGE_haproxy=y
+
+# --- 选配：Xray 核心 ---
+# 如果你还需要传统的 VLESS/Trojan，保留这一行；如果空间不足，可注释掉
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray=y
+
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_kmod-ipt-tproxy=y
+CONFIG_PACKAGE_kmod-ipt-nat=y
+CONFIG_PACKAGE_ca-bundle=y
 
 # 依赖修正与禁用冲突项
 # CONFIG_PACKAGE_libselinux is not set
