@@ -72,22 +72,3 @@ sed -i "s/hostname='OpenWrt'/hostname='QihooV6'/g" package/base-files/files/bin/
 # 添加自动挂载磁盘脚本
 # mkdir -p files/etc/hotplug.d/block && wget -O files/etc/hotplug.d/block/30-usbmount https://raw.githubusercontent.com/fichenx/P3TERX_Actions-OpenWrt/main/files/etc/hotplug.d/block/30-usbmount && chmod 755 files/etc/hotplug.d/block/30-usbmount
 
-# 强制覆盖 .config 冲突项
-echo "CONFIG_PACKAGE_ip-full=y" >> .config
-echo "# CONFIG_PACKAGE_ip-tiny is not set" >> .config
-echo "# CONFIG_PACKAGE_libselinux is not set" >> .config
-echo "# CONFIG_SELINUX is not set" >> .config
-
-# 确保使用 OpenSSL 版 wpad (与系统内其他组件共用证书库，节省空间)
-echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
-echo "# CONFIG_PACKAGE_wpad-wolfssl is not set" >> .config
-
-# 修复 hostapd 编译错误：HE_MU_EDCA 成员缺失问题
-# 这个问题通常出现在旧源码适配 Wi-Fi 6 特性时
-if [ -f "package/network/services/hostapd/Makefile" ]; then
-    echo "正在修复 hostapd 结构体成员冲突..."
-    # 强制在相关头文件中补全定义，或者禁用引起冲突的宏
-    sed -i 's/CONFIG_IEEE80211AX=y/CONFIG_IEEE80211AX=n/g' .config 2>/dev/null
-    # 或者直接对源码进行微调，注释掉报错的那一行（这是最暴力的解法）
-    find build_dir/ -name "hostapd.c" | xargs sed -i 's/hapd->iface->conf->he_mu_edca.he_qos_info \&= 0xfff0;/\/\/修复编译错误/g' 2>/dev/null
-fi
