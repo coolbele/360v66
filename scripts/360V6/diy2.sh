@@ -18,8 +18,8 @@
 
 
 
-echo 'src-git passwall_packages https://github.com/ffff3333/openwrt-passwall-packages.git;main' >>feeds.conf.default
-echo 'src-git passwall https://github.com/ffff3333/small;master' >>feeds.conf.default
+echo 'src-git passwall_packages https://github.com/yuyu913gzs/openwrt-passwall-packages.git;main' >>feeds.conf.default
+echo 'src-git passwall https://github.com/jenna-aspecta/openwrt-passwall-main;main' >>feeds.conf.default
 
 #echo 'src-git OpenWrt_Build_x64_Packages https://github.com/coolbele/OpenWrt_Build_x64_Packages.git;master' >>feeds.conf.default
 #git clone ttps://github.com/coolbele/OpenWrt_Build_x64_Packages coolbele/OpenWrt_Build_x64_Packages
