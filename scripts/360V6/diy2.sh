@@ -14,12 +14,13 @@
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 # Add a feed source
-#echo 'src-git packages_news https://github.com/kenzok8/openwrt-packages.git;master' >>feeds.conf.default
+echo 'src-git packages_news https://github.com/kenzok8/small.git;master' >>feeds.conf.default
+echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages.git;master' >>feeds.conf.default
 
 
-echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
-echo 'src-git passwall_luci https://github.com/coolbele/luci-app-123.git;main' >>feeds.conf.default
-echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
+#echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
+#echo 'src-git passwall_luci https://github.com/coolbele/luci-app-123.git;main' >>feeds.conf.default
+#echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
 git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
 # 如果之前没加过，执行这一行
 git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
