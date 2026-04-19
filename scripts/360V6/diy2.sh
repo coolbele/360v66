@@ -15,7 +15,13 @@
 
 # Add a feed source
 #git clone https://github.com/wukibaka/openwrt-packages wukibaka/openwrt-packages
-echo 'src-git OpenWrt_Build_x64_Packages https://github.com/coolbele/OpenWrt_Build_x64_Packages.git;master' >>feeds.conf.default
+
+
+
+echo 'src-git passwall_packages https://github.com/ffff3333/openwrt-passwall-packages.git;main' >>feeds.conf.default
+echo 'src-git passwall https://github.com/ffff3333/small;master' >>feeds.conf.default
+
+#echo 'src-git OpenWrt_Build_x64_Packages https://github.com/coolbele/OpenWrt_Build_x64_Packages.git;master' >>feeds.conf.default
 #git clone ttps://github.com/coolbele/OpenWrt_Build_x64_Packages coolbele/OpenWrt_Build_x64_Packages
 #echo 'src-git openwrt-packages https://github.com/coolbele/OpenWrt_Build_x64_Packages.git;main' >>feeds.conf.default
 #echo 'src-git kenzo https://github.com/wukibaka/openwrt-packages.git;master' >>feeds.conf.default
