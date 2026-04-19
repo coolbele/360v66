@@ -35,7 +35,6 @@ git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-g
 #git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 # 修正 Rust 1.67.1 编译 http-auth 报错的问题
 # 查找所有的 Cargo.toml 并尝试将 http-auth 锁定在 0.1.9 或更低版本
-find ./feeds/ -name "Cargo.toml" -exec sed -i 's/http-auth = "0.1.10"/http-auth = "0.1.9"/g' {} +
 
 
 
