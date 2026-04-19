@@ -15,7 +15,7 @@
 
 # Add a feed source
 echo 'src-git openwrt-packages https://github.com/coolbele/openwrt-packages2.git;master' >>feeds.conf.default
-echo 'src-git kenzo https://github.com/wukibaka/openwrt-packages.git;master' >>feeds.conf.default
+#echo 'src-git kenzo https://github.com/wukibaka/openwrt-packages.git;master' >>feeds.conf.default
 
 
 #echo 'src-git passwall_packages https://github.com/coolbele/openwrt-123-packages.git;main' >>feeds.conf.default
