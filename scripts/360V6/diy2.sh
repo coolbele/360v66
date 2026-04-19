@@ -26,7 +26,7 @@ echo 'src-git OpenWrt_Build_x64_Packages https://github.com/coolbele/OpenWrt_Bui
 #echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
 git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-gecoosac
 # 如果之前没加过，执行这一行
-git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
+#git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 
 
 
