@@ -82,3 +82,11 @@ echo "# CONFIG_SELINUX is not set" >> .config
 echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
 echo "# CONFIG_PACKAGE_wpad-wolfssl is not set" >> .config
 
+# 1. 彻底删除 v2ray-plugin 源码，防止它参与编译
+rm -rf feeds/passwall_packages/v2ray-plugin
+
+# 2. 暴力降级所有 passwall 核心包对 Go 的版本要求 (防止其它包也报 1.22 错误)
+find ./feeds/passwall_packages -name "go.mod" -exec sed -i 's/go 1.22/go 1.21/g' {} +
+
+# 3. 解除 GOTOOLCHAIN 的本地限制
+find ./feeds/packages/lang/golang/ -name "*.mk" | xargs sed -i 's/GOTOOLCHAIN=local/GOTOOLCHAIN=auto/g'
