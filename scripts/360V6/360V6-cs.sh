@@ -67,20 +67,10 @@ sed -i "s/DISTRIB_DESCRIPTION='OpenWrt '/DISTRIB_DESCRIPTION='yuyu(\$\(TZ=UTC-8 
 sed -i 's/IMG_PREFIX:=$(VERSION_DIST_SANITIZED)/IMG_PREFIX:=360V6cs-$(shell TZ=UTC-8 date "+%Y%m%d")-$(VERSION_DIST_SANITIZED)/g' include/image.mk
 
 #　修改主机名
-sed -i "s/hostname='OpenWrt'/hostname='QihooV6'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='OpenWrt'/hostname='yuyu'/g" package/base-files/files/bin/config_generate
 
 # 添加自动挂载磁盘脚本
 # mkdir -p files/etc/hotplug.d/block && wget -O files/etc/hotplug.d/block/30-usbmount https://raw.githubusercontent.com/fichenx/P3TERX_Actions-OpenWrt/main/files/etc/hotplug.d/block/30-usbmount && chmod 755 files/etc/hotplug.d/block/30-usbmount
-
-# 强制覆盖 .config 冲突项
-echo "CONFIG_PACKAGE_ip-full=y" >> .config
-echo "# CONFIG_PACKAGE_ip-tiny is not set" >> .config
-echo "# CONFIG_PACKAGE_libselinux is not set" >> .config
-echo "# CONFIG_SELINUX is not set" >> .config
-
-# 确保使用 OpenSSL 版 wpad (与系统内其他组件共用证书库，节省空间)
-echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
-echo "# CONFIG_PACKAGE_wpad-wolfssl is not set" >> .config
 
 # 1. 彻底删除 v2ray-plugin 源码，防止它参与编译
 rm -rf feeds/passwall_packages/v2ray-plugin
