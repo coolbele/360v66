@@ -14,7 +14,10 @@
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 # Add a feed source
-#echo 'src-git packages_news https://github.com/kenzok8/openwrt-packages.git;master' >>feeds.conf.default
+#echo 'src-git packages_package https://github.com/kenzok8/small-package.git;main' >>feeds.conf.default
+#echo 'src-git packages_news https://github.com/kenzok8/small.git;master' >>feeds.conf.default
+
+
 
 
 #echo 'src-git mosdns https://github.com/sbwml/luci-app-mosdns' >> feeds.conf.default
