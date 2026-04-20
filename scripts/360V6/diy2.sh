@@ -17,7 +17,7 @@
 #git clone https://github.com/wukibaka/openwrt-packages wukibaka/openwrt-packages
 
 echo 'src-git passwall_packages https://github.com/coolbele/openwrt-passwall-packages.git;main' >>feeds.conf.default
-echo 'src-git passwall_luci https://github.com/yuyu913gzs/openwrt-passwall-11.29.git;main' >>feeds.conf.default
+echo 'src-git passwall_luci https://github.com/coolbele/openwrt-passwall.git;main' >>feeds.conf.default
 
 #echo 'src-git passwall_packages https://github.com/hoangan411/openwrt-passwall-packages.git;main' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/jenna-aspecta/openwrt-passwall-main;main' >>feeds.conf.default
