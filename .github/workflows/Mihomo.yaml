@@ -49,6 +49,11 @@ jobs:
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+    - name: 设置 Go 1.22 编译环境
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+        cache: false # 因为 OpenWrt 有自己的 dl 缓存机制，这里通常设为 false 以免冲突
     - name: 更新 & 安装 feeds & 执行脚本
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
