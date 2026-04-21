@@ -69,6 +69,7 @@ sed -i 's/IMG_PREFIX:=$(VERSION_DIST_SANITIZED)/IMG_PREFIX:=360V6cs-$(shell TZ=U
 #　修改主机名
 sed -i "s/hostname='OpenWrt'/hostname='yuyu'/g" package/base-files/files/bin/config_generate
 
+
 # 添加自动挂载磁盘脚本
 # mkdir -p files/etc/hotplug.d/block && wget -O files/etc/hotplug.d/block/30-usbmount https://raw.githubusercontent.com/fichenx/P3TERX_Actions-OpenWrt/main/files/etc/hotplug.d/block/30-usbmount && chmod 755 files/etc/hotplug.d/block/30-usbmount
 
@@ -80,3 +81,28 @@ find ./feeds/passwall_packages -name "go.mod" -exec sed -i 's/go 1.22/go 1.21/g'
 
 # 3. 解除 GOTOOLCHAIN 的本地限制
 find ./feeds/packages/lang/golang/ -name "*.mk" | xargs sed -i 's/GOTOOLCHAIN=local/GOTOOLCHAIN=auto/g'
+
+# 1. 彻底清理 wpad/hostapd 冲突配置
+sed -i '/CONFIG_PACKAGE_wpad/d' .config
+sed -i '/CONFIG_PACKAGE_hostapd/d' .config
+
+# 2. 强制选中 wpad-openssl 及其必需的加密支持
+# 这里非常重要：必须同时选中 openssl 和相关支持包，否则就会报 undefined reference
+echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
+echo "CONFIG_PACKAGE_libopenssl=y" >> .config
+echo "CONFIG_PACKAGE_libopenssl-conf=y" >> .config
+
+# 3. 补全 hostapd 编译所需的依赖（解决 crypto_bignum 报错）
+echo "CONFIG_PACKAGE_kmod-crypto-hash=y" >> .config
+echo "CONFIG_PACKAGE_kmod-crypto-manager=y" >> .config
+echo "CONFIG_PACKAGE_kmod-crypto-ecb=y" >> .config
+
+# 4. OpenVPN 服务器支持
+echo "CONFIG_PACKAGE_openvpn-openssl=y" >> .config
+echo "CONFIG_PACKAGE_luci-app-openvpn=y" >> .config
+echo "CONFIG_PACKAGE_luci-i18n-openvpn-zh-cn=y" >> .config
+echo "CONFIG_PACKAGE_kmod-tun=y" >> .config
+
+# 5. 显式禁用导致冲突的变体
+echo "# CONFIG_PACKAGE_wpad-basic-wolfssl is not set" >> .config
+echo "# CONFIG_PACKAGE_wpad-mini is not set" >> .config
