@@ -15,7 +15,7 @@
 
 # Add a feed source
 #git clone https://github.com/wukibaka/openwrt-packages wukibaka/openwrt-packages
-echo 'src-git packages_news https://github.com/kenzok8/openwrt-packages.git;master' >>feeds.conf.default
+echo 'src-git kenzok8_old https://github.com/kenzok8/openwrt-packages.git' >> feeds.conf.default
 echo 'src-git passwall_packages https://github.com/coolbele/openwrt-passwall-packages.git;main' >>feeds.conf.default
 echo 'src-git passwall_luci https://github.com/coolbele/openwrt-passwall.git;main' >>feeds.conf.default
 
@@ -36,7 +36,20 @@ git clone https://github.com/laipeng668/luci-app-gecoosac.git package/luci-app-g
 #git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 # 修正 Rust 1.67.1 编译 http-auth 报错的问题
 # 查找所有的 Cargo.toml 并尝试将 http-auth 锁定在 0.1.9 或更低版本
+# 1. 先正常添加这个 feed 仓库
 
+
+# 2. 拉取所有 feeds 源码（必须先拉取，后面才能 checkout）
+./scripts/feeds update -a
+
+# 3. 进入该仓库目录，强制回退到指定的 Commit ID
+# 注意：feeds 的拉取位置通常在 ./feeds/ 目录下
+cd feeds/kenzok8_old
+git checkout c587b23
+cd ../..
+
+# 4. 再次安装这些包，让系统识别回退后的版本
+./scripts/feeds install -a
 
 
 #echo 'src-git MyPackages https://github.com/wwz09/MyPackages.git;main' >>feeds.conf.default
