@@ -38,6 +38,5 @@ if [ -f .config ]; then
     # 强制剔除基础版 dnsmasq，确保 dnsmasq-full 顺利安装
     sed -i 's/CONFIG_PACKAGE_dnsmasq=y/# CONFIG_PACKAGE_dnsmasq is not set/g' .config
     # 启用你要的插件
-    echo "CONFIG_PACKAGE_luci-app-mosdns=y" >> .config
     echo "CONFIG_PACKAGE_luci-app-lucky=y" >> .config
 fi
