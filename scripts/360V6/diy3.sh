@@ -6,8 +6,8 @@ sed -i '/kenzok8/d' feeds.conf.default
 sed -i '/packages_news/d' feeds.conf.default
 
 echo 'src-git packages_news https://github.com/kenzok8/small.git;master' >> feeds.conf.default
-echo 'src-git passwall https://github.com/coolbele/openwrt-passwall.git;main' >> feeds.conf.default
-echo 'src-git passwall_packages https://github.com/coolbele/openwrt-passwall-packages-2025-02-12.git;main' >> feeds.conf.default
+#echo 'src-git passwall https://github.com/coolbele/openwrt-passwall.git;main' >> feeds.conf.default
+#echo 'src-git passwall_packages https://github.com/coolbele/openwrt-passwall-packages-2025-02-12.git;main' >> feeds.conf.default
 
 # 2. 更新 Feeds (同步刚才修改的源)
 ./scripts/feeds update -a
